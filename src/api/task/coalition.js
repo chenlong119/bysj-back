@@ -6,4 +6,12 @@ export function getCoalitionFormation(taskId) {
     url: `/task/management/coalition/formation/${taskId}`,
     method: 'get'
   })
-} 
+}
+
+// 获取联盟详情
+export function getCoalitionDetails(taskId) {
+  return request({
+    url: `/task/management/coalition/details/${taskId}`,
+    method: 'get'
+  })
+}

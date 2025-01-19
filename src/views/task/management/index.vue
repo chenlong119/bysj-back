@@ -261,39 +261,55 @@
     <el-drawer
       v-model="coalitionDetailsDrawer"
       title="联盟详情"
-      size="80%"
+      size="45%"
       :destroy-on-close="true">
       <template #default>
         <div class="coalition-details">
           <el-descriptions title="联盟基本信息" :column="2" border>
-            <el-descriptions-item label="任务名称">{{ currentTask?.name }}</el-descriptions-item>
+            <el-descriptions-item label="联盟名称">{{ coalitionDetails.name }}</el-descriptions-item>
+            <el-descriptions-item label="创建时间">{{ parseTime(coalitionDetails.createTime) }}</el-descriptions-item>
             <el-descriptions-item label="联盟规模">{{ coalitionDetails.companies?.length || 0 }} 家企业</el-descriptions-item>
-            <el-descriptions-item label="联盟总声誉">{{ coalitionDetails.totalReputation?.toFixed(2) }}</el-descriptions-item>
+            <el-descriptions-item label="联盟声誉">{{ coalitionDetails.coalitionReputation?.toFixed(2) }}</el-descriptions-item>
             <el-descriptions-item label="运输成本">{{ coalitionDetails.transportCost }}</el-descriptions-item>
+            <el-descriptions-item label="联盟状态">
+              <el-tag :type="getCoalitionStatusType(coalitionDetails.coalitionStatus)">
+                <dict-tag :options="coalition_status" :value="coalitionDetails.coalitionStatus" />
+              </el-tag>
+            </el-descriptions-item>
           </el-descriptions>
 
-          <div class="company-list">
-            <h3>联盟企业列表</h3>
-            <el-table :data="coalitionDetails.companies" border stripe>
-              <el-table-column label="企业编号" prop="id" align="center" />
-              <el-table-column label="企业名称" prop="name" align="center" />
-              <el-table-column label="所属产业链" prop="chainId" align="center">
-                <template #default="scope">
-                  <dict-tag :options="chain" :value="scope.row.chainId" />
-                </template>
-              </el-table-column>
-              <el-table-column label="企业声誉" prop="reputation" align="center">
-                <template #default="scope">
-                  {{ scope.row.reputation?.toFixed(2) }}
-                </template>
-              </el-table-column>
-              <el-table-column label="地理位置" prop="location" align="center" />
-            </el-table>
-          </div>
-
-          <div class="map-container">
-            <h3>联盟企业分布图</h3>
-            <div ref="mapRef" style="width: 100%; height: 600px;"></div>
+          <div class="view-container">
+            <el-tabs v-model="activeView" class="demo-tabs">
+              <el-tab-pane label="联盟企业列表" name="list">
+                <el-table :data="coalitionDetails.companies" border stripe>
+                  <el-table-column label="企业编号" prop="id" align="center" width="100" />
+                  <el-table-column label="企业名称" prop="name" align="center" />
+                  <el-table-column label="所属产业链" prop="chainId" align="center" width="120">
+                    <template #default="scope">
+                      <dict-tag :options="chain" :value="scope.row.chainId" />
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="企业声誉" prop="reputation" align="center" width="120">
+                    <template #default="scope">
+                      {{ scope.row.reputation?.toFixed(2) }}
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="企业状态" prop="status" align="center" width="120">
+                    <template #default="scope">
+                      <el-tag :type="scope.row.status===3? 'danger':'primary'">
+                        {{scope.row.status===3? '异常':'正常'}}
+                      </el-tag>
+                    </template>
+                  </el-table-column>
+                  <el-table-column label="地理位置" prop="location.name" align="center" width="120" />
+                </el-table>
+              </el-tab-pane>
+              <el-tab-pane label="企业地理分布图" name="map">
+                <div class="map-container">
+                  <div ref="mapRef" style="width:800px; height: calc(100vh - 350px);"></div>
+                </div>
+              </el-tab-pane>
+            </el-tabs>
           </div>
         </div>
       </template>
@@ -302,13 +318,13 @@
 </template>
 
 <script setup name="Management">
-import { listManagement, getManagement, delManagement, addManagement, updateManagement, getTaskAbnormalInfo } from "@/api/task/management";
-import {listResources,getResourceOptions,addResource,getAllResource,updateResource,deleteResource} from "@/api/task/resources.js";
-import useUserStore from "@/store/modules/user.js";
-import { getCoalitionFormation } from "@/api/task/coalition";
-import { executeCoalitionAllocation } from "@/api/task/management";
+import { listManagement, getManagement, delManagement, addManagement, updateManagement, getTaskAbnormalInfo } from "/src/api/task/management";
+import {listResources,getResourceOptions,addResource,getAllResource,updateResource,deleteResource} from "/src/api/task/resources.js";
+import useUserStore from "/src/store/modules/user.js";
+import { getCoalitionFormation, getCoalitionDetails } from "/src/api/task/coalition";
+import { executeCoalitionAllocation } from "/src/api/task/management";
 const { proxy } = getCurrentInstance();
-const { task_status, chain } = proxy.useDict('task_status', 'chain');
+const { task_status, chain,coalition_status} = proxy.useDict('task_status', 'chain','coalition_status');
 import * as echarts from 'echarts';
 import chinaJson from '/src/assets/chain.json';
 echarts.registerMap('china', chinaJson);
@@ -352,6 +368,20 @@ function getList() {
     total.value = response.total;
     loading.value = false;
   });
+}
+
+const getCoalitionStatusType=(status)=>{
+  switch (status)
+  {
+    case 0:
+      return 'info'
+    case 1:
+      return 'warning'
+    case 2:
+      return 'success'
+    case 3:
+      return 'danger'
+  }
 }
 
 // 取消按钮
@@ -932,8 +962,8 @@ const coalitionDetails = ref({
 const mapRef = ref(null);
 let mapChart = null;
 
-// 生成随机地理位置
-function generateRandomLocation() {
+// 生成不重复的随机位置
+function generateRandomLocations(count) {
   const cities = [
     { name: '北京', coord: [116.405285, 39.904989] },
     { name: '上海', coord: [121.472644, 31.231706] },
@@ -944,16 +974,69 @@ function generateRandomLocation() {
     { name: '武汉', coord: [114.298572, 30.584355] },
     { name: '西安', coord: [108.948024, 34.263161] },
     { name: '南京', coord: [118.767413, 32.041544] },
-    { name: '重庆', coord: [106.504962, 29.533155] }
+    { name: '重庆', coord: [106.504962, 29.533155] },
+    { name: '天津', coord: [117.190182, 39.125596] },
+    { name: '苏州', coord: [120.619585, 31.299379] },
+    { name: '青岛', coord: [120.383428, 36.067997] },
+    { name: '长沙', coord: [112.938814, 28.228209] },
+    { name: '沈阳', coord: [123.429096, 41.796767] },
+    { name: '郑州', coord: [113.665412, 34.757975] },
+    { name: '济南', coord: [117.000923, 36.675807] },
+    { name: '大连', coord: [121.618622, 38.914589] },
+    { name: '厦门', coord: [118.089425, 24.479834] },
+    { name: '福州', coord: [119.306239, 26.075302] },
+    { name: '昆明', coord: [102.712251, 25.040609] },
+    { name: '合肥', coord: [117.283042, 31.861191] },
+    { name: '哈尔滨', coord: [126.642464, 45.756967] },
+    { name: '长春', coord: [125.324501, 43.886841] },
+    { name: '南宁', coord: [108.320004, 22.815478] },
+    { name: '石家庄', coord: [114.502461, 38.045474] },
+    { name: '太原', coord: [112.549248, 37.857014] },
+    { name: '乌鲁木齐', coord: [87.617733, 43.792818] },
+    { name: '贵阳', coord: [106.713478, 26.578343] },
+    { name: '南昌', coord: [115.892151, 28.676493] }
   ];
-  const randomCity = cities[Math.floor(Math.random() * cities.length)];
-  return {
-    name: randomCity.name,
-    coord: randomCity.coord
-  };
+  
+  // 随机打乱城市数组
+  const shuffled = [...cities].sort(() => Math.random() - 0.5);
+  // 取前count个城市
+  return shuffled.slice(0, count);
 }
 
-// 初始化地图
+async function handleViewCoalitionDetails(row) {
+  try {
+    currentTask.value = row;
+    coalitionDetailsDrawer.value = true;
+    
+    const res = await getCoalitionDetails(row.id);
+    if (res.code === 200 && res.data) {
+      const { coalition, companies } = res.data;
+      
+      // 为所有企业生成不重复的位置
+      const locations = generateRandomLocations(companies.length);
+      const companiesWithLocation = companies.map((company, index) => ({
+        ...company,
+        location: locations[index]
+      }));
+      
+      coalitionDetails.value = {
+        ...coalition,
+        companies: companiesWithLocation,
+      };
+      
+      await nextTick();
+      initMap(companiesWithLocation);
+    } else {
+      proxy.$modal.msgError("获取联盟详情失败");
+      coalitionDetailsDrawer.value = false;
+    }
+  } catch (error) {
+    console.error("获取联盟详情失败:", error);
+    proxy.$modal.msgError("获取联盟详情失败");
+    coalitionDetailsDrawer.value = false;
+  }
+}
+
 function initMap(companies) {
   if (!mapRef.value) return;
   
@@ -963,120 +1046,119 @@ function initMap(companies) {
   
   mapChart = echarts.init(mapRef.value);
   
-  // 为每个企业生成随机位置
-  const nodes = companies.map(company => {
-    const location = generateRandomLocation();
-    return {
-      name: `企业${company.id}`,
-      value: location.coord,
-      symbolSize: 20,
-      itemStyle: {
-        color: '#4992ff'
-      }
-    };
-  });
+  const nodes = companies.map(company => ({
+    name: company.name,
+    value: company.location.coord,
+    symbolSize: 12,
+    itemStyle: {
+      color: '#4992ff',
+      borderColor: '#fff',
+      borderWidth: 2
+    }
+  }));
 
-  // 生成企业间的连接关系
+  // 生成企业间的资源流向关系
   const edges = [];
-  for (let i = 0; i < companies.length; i++) {
-    for (let j = i + 1; j < companies.length; j++) {
-      if (Math.random() > 0.5) { // 随机生成连接关系
+  companies.forEach((fromCompany, i) => {
+    companies.forEach((toCompany, j) => {
+      if (fromCompany.chainPosition < toCompany.chainPosition) {
+        // 为每条线生成不同的动画效果
         edges.push({
-          coords: [nodes[i].value, nodes[j].value],
+          coords: [fromCompany.location.coord, toCompany.location.coord],
           lineStyle: {
-            color: '#4992ff',
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: '#58B3CC' },
+              { offset: 1, color: '#F58158' }
+            ]),
             width: 2,
+            opacity: 0.6,
             curveness: 0.2
           }
         });
       }
-    }
-  }
+    });
+  });
 
   const option = {
-    backgroundColor: '#404a59',
+    backgroundColor: '#001529',
+    tooltip: {
+      trigger: 'item',
+      formatter: '{b}'
+    },
     geo: {
       map: 'china',
       label: {
-        emphasis: {
-          show: false
-        }
+        show: false
       },
       roam: true,
+      zoom: 1.2,
+      center: [104.114129, 37.550339],
       itemStyle: {
         normal: {
-          areaColor: '#323c48',
-          borderColor: '#111'
+          areaColor: '#0c274b',
+          borderColor: '#1cccff',
+          borderWidth: 1.5
         },
         emphasis: {
-          areaColor: '#2a333d'
+          areaColor: '#02102b'
         }
       }
     },
     series: [
       {
         name: '企业节点',
-        type: 'scatter',
+        type: 'effectScatter',
         coordinateSystem: 'geo',
         data: nodes,
-        symbolSize: 20,
+        symbolSize: 12,
+        showEffectOn: 'render',
+        rippleEffect: {
+          brushType: 'stroke',
+          scale: 4,
+          period: 3
+        },
         label: {
-          normal: {
-            show: true,
-            formatter: '{b}',
-            position: 'right'
-          }
-        }
+          show: true,
+          position: 'right',
+          formatter: '{b}',
+          fontSize: 14,
+          color: '#fff',
+          textBorderColor: '#000',
+          textBorderWidth: 2
+        },
+        zlevel: 1
       },
       {
-        name: '连接关系',
+        name: '资源流向',
         type: 'lines',
         coordinateSystem: 'geo',
         data: edges,
         large: true,
         effect: {
           show: true,
-          constantSpeed: 30,
+          period: 4,
+          trailLength: 0.6,
           symbol: 'arrow',
-          symbolSize: 6,
-          trailLength: 0.5
+          symbolSize: 8,
+          animation: true,
+          loop: true,
+          delay: function(idx) {
+            return idx * 100;
+          }
         },
         lineStyle: {
-          normal: {
-            color: '#4992ff',
-            width: 1,
-            opacity: 0.6,
-            curveness: 0.2
-          }
-        }
+          width: 1.5,
+          opacity: 0.6,
+          curveness: 0.2,
+          cap: 'round'
+        },
+        zlevel: 2,
+        progressive: 200
       }
     ]
   };
 
   mapChart.setOption(option);
-}
-
-// 查看联盟详情
-async function handleViewCoalitionDetails(row) {
-  currentTask.value = row;
-  coalitionDetailsDrawer.value = true;
-  
-  // 模拟获取联盟详情数据
-  // 实际项目中应该通过API获取
-  coalitionDetails.value = {
-    companies: Array.from({ length: 5 }, (_, i) => ({
-      id: i + 1,
-      name: `测试企业${i + 1}`,
-      chainId: row.taskChain,
-      reputation: Math.random() * 2 + 3,
-      location: generateRandomLocation().name
-    })),
-    totalReputation: Math.random() * 2 + 3,
-    transportCost: Math.floor(Math.random() * 1000 + 500)
-  };
-
-  await nextTick();
-  initMap(coalitionDetails.value.companies);
 }
 
 // 监听抽屉关闭
@@ -1103,23 +1185,15 @@ onBeforeUnmount(() => {
   });
 });
 
+// 添加标签页引用
+const activeView = ref('list');
+
 getList();
 </script>
 
 <style scoped>
 .coalition-dialog-content {
   padding: 20px;
-}
-
-/* 调整加载动画文字样式 */
-:deep(.el-loading-text) {
-  color: #ffffff;
-  font-size: 16px;
-}
-
-/* 确保loading遮罩覆盖整个内容区域 */
-:deep(.el-loading-mask) {
-  z-index: 2000;
 }
 
 /* 调整对话框内容区域样式 */
@@ -1129,35 +1203,33 @@ getList();
   overflow-y: auto;
 }
 
-/* 确保底部按钮固定显示 */
-.el-dialog :deep(.el-dialog__footer) {
-  border-top: 1px solid #dcdfe6;
-  padding: 15px 30px;
-  background: #fff;
-}
-
-/* 添加图表容器样式 */
-.chart-container {
-  width: 100%;
-  height: 500px;
-  margin: 20px 0;
-}
-
 .coalition-details {
   padding: 20px;
+  height: 100%;
 }
 
-.company-list {
-  margin: 20px 0;
+.view-container {
+  margin-top: 20px;
+  height: calc(100% - 160px);
 }
 
 .map-container {
-  margin: 20px 0;
+  background: #0f1c3c;
+  border-radius: 8px;
+  padding: 20px;
+  height: 100%;
+  width: 100%;
 }
 
 h3 {
   margin: 20px 0;
   color: #303133;
   font-weight: 500;
+  font-size: 16px;
 }
+
+.map-container h3 {
+  color: #fff;
+}
+
 </style>
